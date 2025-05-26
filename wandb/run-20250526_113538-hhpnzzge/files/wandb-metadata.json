@@ -1,0 +1,44 @@
+{
+  "os": "macOS-15.2-arm64-arm-64bit",
+  "python": "CPython 3.11.5",
+  "startedAt": "2025-05-26T09:35:38.124573Z",
+  "program": "/Users/sergiorozada/Repositories/mc-tlr/main.py",
+  "codePath": "main.py",
+  "git": {
+    "remote": "https://github.com/sergiorozada12/mc-tlr.git",
+    "commit": "1915c1a0cba620034cc9cb6f5bb194d315981378"
+  },
+  "email": "sergiorozada12@gmail.com",
+  "root": "/Users/sergiorozada/Repositories/mc-tlr",
+  "host": "MacBook-Air-de-Sergio.local",
+  "executable": "/Users/sergiorozada/Repositories/mc-tlr/venv/bin/python",
+  "codePathLocal": "main.py",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "210107195392",
+      "used": "187671093248"
+    },
+    "/System/Volumes/Data": {
+      "total": "210107195392",
+      "used": "187671093248"
+    }
+  },
+  "memory": {
+    "total": "8589934592"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 8
+  },
+  "apple": {
+    "name": "Apple M1",
+    "ecpuCores": 4,
+    "pcpuCores": 4,
+    "gpuCores": 7,
+    "memoryGb": 8,
+    "swapTotalBytes": "7516192768",
+    "ramTotalBytes": "8589934592"
+  }
+}
