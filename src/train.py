@@ -148,16 +148,25 @@ class Trainer:
         trials = self.cfg.general.trials
         mc_ests = [r[0] for r in self.trial_results]
 
+        # Final metrics converted to floats
         klds = [float(kld_err(mc_true[t].P, mc_ests[t].P)) for t in range(trials)]
         frobs = [float(normfrob_err(mc_true[t].P, mc_ests[t].P)) for t in range(trials)]
         l1s = [float(norml1_err(mc_true[t].P, mc_ests[t].P)) for t in range(trials)]
 
-        method_specific_args = self.method_args
+        # Method-specific config only
+        method_cfg = getattr(self.cfg.method, self.method_name)
+        method_cfg_dict = OmegaConf.to_container(method_cfg, resolve=True)
+
+        # Full config minus method subfields
+        base_cfg = OmegaConf.to_container(self.cfg, resolve=True)
+        base_cfg["method"] = {
+            "method_name": self.method_name,
+            self.method_name: method_cfg_dict,
+        }
 
         result_dict = {
             "experiment": self.experiment_name,
-            "method": self.method_name,
-            "params": method_specific_args,
+            "config": base_cfg,
             "results": {
                 "kld": klds,
                 "frob": frobs,
