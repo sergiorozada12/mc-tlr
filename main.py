@@ -4,9 +4,9 @@ import torch
 import wandb
 
 from src.config import MainConfig
-from src.chains.generation import TensorGenerator
+from src.chains.generation import MatrixGenerator, TensorGenerator
 from src.train import Trainer
-from src.chains.models import MarkovChainTensor
+from src.chains.models import MarkovChainMatrix, MarkovChainTensor
 from src.utils import ten2mat
 from src.estimation.empirical import EmpiricalEstimator  # or wherever it's defined
 
@@ -21,23 +21,21 @@ def main():
     os.environ["WANDB_PROJECT"] = "markov-chain-estimation"
 
     # Generate data
-    generator = TensorGenerator()
-    dims = torch.tensor(cfg.chain.dims)
-    mc = generator.lowrank(dims, cfg.chain.rank)
+    generator = MatrixGenerator()
+    I = int(torch.prod(torch.tensor(cfg.chain.dims)))
+    mc = generator.lowrank(I, cfg.chain.rank)
+
     trajectories = mc.simulate(
         num_steps=cfg.chain.length,
         num_trajectories=cfg.general.trials,
         burn_in=cfg.chain.burn_in,
     )
 
-    # Estimate empirical models from trajectories
     estimator = EmpiricalEstimator()
-    estimates = estimator.estimate_tensor_batch(trajectories, dims)
+    estimates = estimator.estimate_matrix_batch(trajectories, I)
     P_emp_list, Q_emp_list = zip(*estimates)
-    mc_emp = [MarkovChainTensor(P) for P in P_emp_list]
-
-    # Ground-truth matrix version of the model (for comparison)
-    mc_true = [mc.to_matrix()] * cfg.general.trials
+    mc_emp = [MarkovChainMatrix(P) for P in P_emp_list]
+    mc_true = [mc] * cfg.general.trials
 
     # Train
     trainer = Trainer(method_name=cfg.method.method_name, cfg=cfg, I=mc_true[0].I)

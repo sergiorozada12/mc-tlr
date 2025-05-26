@@ -15,7 +15,7 @@ class MatrixGenerator:
         V = (V * V) / (torch.linalg.norm(V, dim=0, keepdim=True) ** 2)
 
         B = torch.diag(torch.FloatTensor(np.random.rand(K)))
-        P = (U @ V.T) @ B
+        P = U @ B @ V.T
         P = P / P.sum(dim=1, keepdim=True)
 
         return MarkovChainMatrix(P)

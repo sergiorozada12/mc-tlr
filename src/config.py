@@ -25,7 +25,8 @@ class TrainingConfig:
     save: bool = True
 
 @dataclass
-class DCConfig:  # renamed from IPDCConfig
+class DCConfig:
+    K: int = 1
     alpha: float = 1e-1
     beta: float = 1.0
     gamma: float = 1.0
@@ -33,17 +34,18 @@ class DCConfig:  # renamed from IPDCConfig
     num_inn_itrs: int = 10
     inn_tol: float = 1e-7
     verbose: bool = True
-    K: int = 5
 
 @dataclass
-class NNConfig:  # renamed from SGSADMMConfig
+class NNConfig:
+    K: int = 5
     beta: float = 1.0
     pmin: float = 1e-6
     gamma: float = 1.0
     verbose: bool = True
 
 @dataclass
-class SMConfig:  # renamed from SLRMConfig
+class SMConfig:
+    K: int = 5
     qmin: float = 1e-6
 
 @dataclass
@@ -60,8 +62,8 @@ class SCPDConfig:
     beta: float = 0.5
     eps: float = 1e-9
     B: Optional[int] = None
-    INCREASE_B: bool = False
-    ACCELERATION: bool = True
+    increase_b: bool = False
+    acceleration: bool = True
 
 @dataclass
 class MethodConfig:

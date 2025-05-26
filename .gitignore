@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+wandb/
+synth_comparison/
+results/
 
 # C extensions
 *.so

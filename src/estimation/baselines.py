@@ -19,39 +19,40 @@ class SGSADMM:
     def fit(self, P_emp):
         check_valid_transition_mat(P_emp)
         I = P_emp.shape[0]
+        pmin_tensor = torch.tensor(self.pmin, device=P_emp.device, dtype=P_emp.dtype)
 
         def update_y(P, W, S):
-            return (torch.eye(I) - P - self.beta * (W + S)).sum(1) / (self.beta * I)
+            return (torch.eye(I, device=P.device) - P - self.beta * (W + S)).sum(1) / (self.beta * I)
 
         def update_W(P, S, y):
-            R = torch.outer(y, torch.ones(I)) + S + P / self.beta
+            R = torch.outer(y, torch.ones(I, device=P.device)) + S + P / self.beta
             Z = 0.5 * (R + torch.sqrt(R**2 + 4 * P_emp / self.beta)) * (P_emp != 0) \
                 + torch.maximum(R, torch.zeros_like(R)) * (P_emp == 0)
             return Z - R
 
         def update_S(P, W, y):
-            R = -(W + torch.outer(y, torch.ones(I)) + P / self.beta)
+            R = -(W + torch.outer(y, torch.ones(I, device=P.device)) + P / self.beta)
             try:
                 if self.K is None:
                     U, sig, V = torch.svd(R)
                 else:
                     U, sig, V = torch.svd_lowrank(R, self.K)
             except:
-                U, sig, V = np.linalg.svd(R.numpy())
-                U = torch.FloatTensor(U)
-                sig = torch.FloatTensor(sig)
-                V = torch.FloatTensor(V)
-            sig_upd = torch.minimum(sig, self.gamma * torch.ones_like(sig))
+                U, sig, V = np.linalg.svd(R.cpu().numpy())
+                U = torch.FloatTensor(U).to(P.device)
+                sig = torch.FloatTensor(sig).to(P.device)
+                V = torch.FloatTensor(V).to(P.device)
+            sig_upd = torch.minimum(sig, torch.tensor(self.gamma, device=sig.device, dtype=sig.dtype))
             return U @ torch.diag(sig_upd) @ V.T
 
         def update_P(P, W, S, y):
-            return torch.maximum(P + self.gamma * self.beta * (W + torch.outer(y, torch.ones(I)) + S), self.pmin)
+            return torch.maximum(P + self.gamma * self.beta * (W + torch.outer(y, torch.ones(I, device=P.device)) + S), pmin_tensor)
 
-        # Initialize
-        P = torch.rand(I, I); P = P / P.sum(1, keepdim=True)
-        W = torch.zeros((I, I))
-        S = torch.zeros((I, I))
-        y = -torch.ones(I)
+        P = torch.rand(I, I, device=P_emp.device)
+        P = P / P.sum(1, keepdim=True)
+        W = torch.zeros((I, I), device=P.device)
+        S = torch.zeros((I, I), device=P.device)
+        y = -torch.ones(I, device=P.device)
 
         diffs = []
         costs = []
@@ -107,43 +108,44 @@ class IPDC:
     def fit(self, P_emp):
         check_valid_transition_mat(P_emp)
         I = P_emp.shape[0]
+        pmin_tensor = torch.tensor(self.pmin, device=P_emp.device, dtype=P_emp.dtype)
 
         def update_y(P, W, S):
-            return (torch.eye(I) - P - self.beta * (W + S)).sum(1) / (self.beta * I)
+            return (torch.eye(I, device=P.device) - P - self.beta * (W + S)).sum(1) / (self.beta * I)
 
         def update_W(P, S, T, y):
-            R = torch.outer(y, torch.ones_like(y)) + S + P / self.beta
-            Z = (0.5 / (self.alpha + 1)) * ((R - T / self.beta) + torch.sqrt((R - T / self.beta)**2 + 4 * (self.alpha + 1) * P_emp / self.beta)) * (P_emp != 0) \
+            R = torch.outer(y, torch.ones(I, device=P.device)) + S + P / self.beta
+            sqrt_term = torch.sqrt((R - T / self.beta)**2 + 4 * (self.alpha + 1) * P_emp / self.beta)
+            Z = (0.5 / (self.alpha + 1)) * ((R - T / self.beta) + sqrt_term) * (P_emp != 0) \
                 + torch.maximum(R - T / self.beta, torch.zeros_like(R)) * (P_emp == 0)
             return Z - R
 
         def update_S(P, W, y):
-            R = -(W + torch.outer(y, torch.ones(I)) + P / self.beta)
+            R = -(W + torch.outer(y, torch.ones(I, device=P.device)) + P / self.beta)
             try:
                 U, sig, V = torch.svd_lowrank(R, self.K)
             except:
-                U, sig, V = np.linalg.svd(R.numpy())
-                U = torch.FloatTensor(U)
-                sig = torch.FloatTensor(sig)
-                V = torch.FloatTensor(V)
-            sig_upd = torch.minimum(sig, self.gamma * torch.ones_like(sig))
+                U, sig, V = np.linalg.svd(R.cpu().numpy())
+                U = torch.FloatTensor(U).to(P.device)
+                sig = torch.FloatTensor(sig).to(P.device)
+                V = torch.FloatTensor(V).to(P.device)
+            sig_upd = torch.minimum(sig, torch.tensor(self.gamma, device=sig.device, dtype=sig.dtype))
             return U @ torch.diag(sig_upd) @ V.T
 
         def update_T(P):
             try:
-                U, sig, V = svds(P.numpy(), k=self.K)
-                return torch.FloatTensor(U @ np.diag(sig) @ V)
+                U, sig, V = svds(P.cpu().numpy(), k=self.K)
+                return torch.FloatTensor(U @ np.diag(sig) @ V).to(P.device)
             except:
                 return P.clone()
 
         def update_P(P, W, S, y):
-            return torch.maximum(P + self.gamma * self.beta * (W + torch.outer(y, torch.ones(I)) + S), self.pmin)
+            return torch.maximum(P + self.gamma * self.beta * (W + torch.outer(y, torch.ones(I, device=P.device)) + S), pmin_tensor)
 
-        # Initialize
-        P = torch.ones((I, I)) / I
-        W = torch.zeros((I, I))
-        S = torch.zeros((I, I))
-        y = -torch.ones(I)
+        P = torch.ones((I, I), device=P_emp.device) / I
+        W = torch.zeros((I, I), device=P.device)
+        S = torch.zeros((I, I), device=P.device)
+        y = -torch.ones(I, device=P.device)
         T = update_T(P)
 
         diffs = []
@@ -202,15 +204,16 @@ class SLRM:
     def fit(self, Q_emp):
         check_valid_joint_mat(Q_emp)
         I = Q_emp.shape[0]
+        qmin_tensor = torch.tensor(self.qmin, device=Q_emp.device, dtype=Q_emp.dtype)
 
         try:
-            U, sig, V = svds(Q_emp.numpy(), k=self.K)
-            Q_est = torch.FloatTensor(U @ np.diag(sig) @ V)
+            U, sig, V = svds(Q_emp.cpu().numpy(), k=self.K)
+            Q_est = torch.FloatTensor(U @ np.diag(sig) @ V).to(Q_emp.device)
         except:
-            U, sig, V = np.linalg.svd(Q_emp.numpy())
-            Q_est = torch.FloatTensor(U[:, :self.K] @ np.diag(sig[:self.K]) @ V[:self.K, :])
+            U, sig, V = np.linalg.svd(Q_emp.cpu().numpy())
+            Q_est = torch.FloatTensor(U[:, :self.K] @ np.diag(sig[:self.K]) @ V[:self.K, :]).to(Q_emp.device)
 
-        Q_est = torch.maximum(Q_est, self.qmin)
+        Q_est = torch.maximum(Q_est, qmin_tensor)
         Q_est = Q_est / torch.linalg.norm(Q_est, 1)
 
         R = 0.5 * (Q_est.sum(0) + Q_est.sum(1))
@@ -218,7 +221,7 @@ class SLRM:
         Marginal = P.sum(1, keepdim=True)
         Mask = (Marginal == 0).expand_as(P)
         P = P / Marginal
-        P[Mask] = 1. / I
+        P[Mask] = torch.tensor(1. / I, device=P.device, dtype=P.dtype)
 
         P = P / P.sum(1, keepdim=True)
         return dict(mc_est=MarkovChainMatrix(P), cost=kld_err(Qmat2Pmat(Q_emp), P))

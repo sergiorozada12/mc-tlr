@@ -2,8 +2,10 @@ import os
 import wandb
 import numpy as np
 import torch
+import json
 from omegaconf import OmegaConf
 from joblib import Parallel, delayed
+import matplotlib.pyplot as plt
 
 from src.utils import kld_err, normfrob_err, norml1_err, mat2ten
 from src.chains.models import MarkovChainMatrix
@@ -21,11 +23,13 @@ class Trainer:
         self.method_instance = self._instantiate_method()
         self.trial_results = []
 
+        self.experiment_name = f"{self.method_name}_{self.method_args.get('K', 'NA')}"
+
         if self.cfg.general.use_wandb:
             wandb.init(
                 project="markov-chain-estimation",
                 config=OmegaConf.to_container(cfg, resolve=True),
-                name=f"{method_name}_{self.method_args.get('K', 'NA')}",
+                name=self.experiment_name,
             )
 
     def fit(self, trajectories, mc_true, mc_emp):
@@ -54,62 +58,113 @@ class Trainer:
         )
         self.trial_results = results
         self._log_all(mc_true)
+        self.save_results_as_json(mc_true)
 
     def _instantiate_method(self):
         method = self.method_name
         args = self.method_args
 
         if method == "dc":
-            return IPDC(K=self.cfg.method.K, **args)
+            return IPDC(**args)
         elif method == "nn":
-            return SGSADMM(K=self.cfg.method.K, **args)
+            return SGSADMM(**args)
         elif method == "sm":
-            return SLRM(K=self.cfg.method.K, **args)
+            return SLRM(**args)
         elif method in {"fib", "ent", "traj"}:
-            return SCPD(K=self.cfg.method.K, sampling_type=method, **args)
+            return SCPD(sampling_type=method, **args)
         else:
             raise ValueError(f"Unknown method: {method}")
 
     def _get_method_args(self):
         method_cfg = getattr(self.cfg.method, self.method_name)
-        method_args = {k: v for k, v in vars(method_cfg).items() if not k.startswith("_")}
-        return method_args
+        return OmegaConf.to_container(method_cfg, resolve=True)
 
     def _log_all(self, mc_true):
         trials = self.cfg.general.trials
         diffs, costs = zip(*[(r[1], r[2]) for r in self.trial_results])
         mc_ests = [r[0] for r in self.trial_results]
 
+        # Final metrics
         klds = [kld_err(mc_true[t].P, mc_ests[t].P) for t in range(trials)]
         frobs = [normfrob_err(mc_true[t].P, mc_ests[t].P) for t in range(trials)]
         l1s = [norml1_err(mc_true[t].P, mc_ests[t].P) for t in range(trials)]
 
+        fig, ax = plt.subplots()
+        ax.boxplot([klds, frobs, l1s], labels=["KLD", "Frob", "L1"], patch_artist=True)
+        ax.set_title("Error Distribution Across Trials")
+        ax.set_ylabel("Error")
+        wandb.log({"error_boxplot": wandb.Image(fig)})
+        plt.close(fig)
+
+        # Diffs and plots
+        min_len = min(len(x) for x in diffs)
+        diffs_mean = np.mean([d[:min_len] for d in diffs], axis=0)
+        costs_mean = np.mean([c[:min_len] for c in costs], axis=0)
+        steps = list(range(min_len))
+
+        diffs_plot = wandb.plot.line_series(
+            xs=steps,
+            ys=[diffs_mean],
+            keys=[""],
+            title="Mean Diffs",
+            xname="Step"
+        )
+
+        costs_plot = wandb.plot.line_series(
+            xs=steps,
+            ys=[costs_mean],
+            keys=[""],
+            title="Mean Costs",
+            xname="Step"
+        )
+
         wandb.log({
-            "kld_mean": np.mean(klds),
-            "frob_mean": np.mean(frobs),
-            "l1_mean": np.mean(l1s),
+            "Diffs (Mean)": diffs_plot,
+            "Costs (Mean)": costs_plot,
         })
 
+        # Estimation
+        fig, axes = plt.subplots(nrows=2, ncols=trials, figsize=(2.5 * trials, 5))
         for t in range(trials):
-            if diffs[t] is not None:
-                wandb.log({f"diffs/trial_{t}": wandb.plot.line_series(
-                    xs=list(range(len(diffs[t]))),
-                    ys=[diffs[t]],
-                    keys=["diffs"],
-                    title=f"Diffs Trial {t}",
-                    xname="Iteration"
-                )})
-            if costs[t] is not None:
-                wandb.log({f"costs/trial_{t}": wandb.plot.line_series(
-                    xs=list(range(len(costs[t]))),
-                    ys=[costs[t]],
-                    keys=["costs"],
-                    title=f"Costs Trial {t}",
-                    xname="Iteration"
-                )})
+            ax_true = axes[0, t]
+            ax_est = axes[1, t]
+            ax_true.imshow(mc_true[t].P, cmap="viridis")
+            ax_true.set_title(f"True P (trial {t})")
+            ax_true.axis("off")
+            ax_est.imshow(mc_ests[t].P, cmap="viridis")
+            ax_est.set_title(f"Estimated P (trial {t})")
+            ax_est.axis("off")
 
-        avg_P = torch.stack([mc.P for mc in mc_ests]).mean(dim=0).numpy()
-        wandb.log({"Estimated P (mean)": wandb.Image(avg_P)})
+        plt.tight_layout()
+        wandb.log({"Transition Matrices (per trial)": wandb.Image(fig)})
+        plt.close(fig)
 
     def get_results(self):
         return self.trial_results
+
+    def save_results_as_json(self, mc_true):
+        os.makedirs(self.cfg.general.save_path, exist_ok=True)
+
+        trials = self.cfg.general.trials
+        mc_ests = [r[0] for r in self.trial_results]
+
+        klds = [float(kld_err(mc_true[t].P, mc_ests[t].P)) for t in range(trials)]
+        frobs = [float(normfrob_err(mc_true[t].P, mc_ests[t].P)) for t in range(trials)]
+        l1s = [float(norml1_err(mc_true[t].P, mc_ests[t].P)) for t in range(trials)]
+
+        method_specific_args = self.method_args
+
+        result_dict = {
+            "experiment": self.experiment_name,
+            "method": self.method_name,
+            "params": method_specific_args,
+            "results": {
+                "kld": klds,
+                "frob": frobs,
+                "l1": l1s,
+            }
+        }
+
+        path = os.path.join(self.cfg.general.save_path, f"{self.experiment_name}.json")
+        with open(path, "w") as f:
+            json.dump(result_dict, f, indent=4)
