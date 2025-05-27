@@ -3,7 +3,7 @@ import numpy as np
 from tensorly.cp_tensor import cp_to_tensor
 
 from src.chains.models import MarkovChainMatrix, MarkovChainTensor
-from src.utils import mat2ten, ten2mat, lowtri2mat
+from src.utils import mat_to_ten, ten_to_mat, lowtri_to_mat
 
 
 class MatrixGenerator:
@@ -20,9 +20,11 @@ class MatrixGenerator:
 
         return MarkovChainMatrix(P)
 
-    def erdosrenyi(self, I: int, edge_prob=0.3, eps=0.02, beta=1.0) -> MarkovChainMatrix:
+    def erdosrenyi(
+        self, I: int, edge_prob=0.3, eps=0.02, beta=1.0
+    ) -> MarkovChainMatrix:
         while True:
-            A = lowtri2mat(np.random.binomial(1, edge_prob, int(I * (I - 1) / 2)))
+            A = lowtri_to_mat(np.random.binomial(1, edge_prob, int(I * (I - 1) / 2)))
             L = np.diag(A.sum(0)) - A
             if np.sum(np.abs(np.linalg.eigvalsh(L)) < 1e-9) <= 1:
                 break
@@ -52,9 +54,9 @@ class TensorGenerator:
         w = w / w.sum()
 
         P = cp_to_tensor((w, U))
-        P = ten2mat(P, I)
+        P = ten_to_mat(P, I)
         P = P / P.sum(dim=1, keepdim=True)
-        P = mat2ten(P, Is)
+        P = mat_to_ten(P, Is)
 
         return MarkovChainTensor(P)
 

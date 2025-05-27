@@ -4,11 +4,8 @@ import torch
 import wandb
 
 from src.config import MainConfig
-from src.chains.generation import MatrixGenerator, TensorGenerator
 from src.train import Trainer
-from src.chains.models import MarkovChainMatrix, MarkovChainTensor
-from src.utils import ten2mat
-from src.estimation.empirical import EmpiricalEstimator  # or wherever it's defined
+from src.datasets.sim import SimMatrixDataset, SimTensorDataset
 
 
 def main():
@@ -17,28 +14,19 @@ def main():
     torch.manual_seed(cfg.general.seed)
     torch.set_num_threads(1)
 
-    # Set up wandb project
     os.environ["WANDB_PROJECT"] = "markov-chain-estimation"
 
-    # Generate data
-    generator = MatrixGenerator()
-    I = int(torch.prod(torch.tensor(cfg.chain.dims)))
-    mc = generator.lowrank(I, cfg.chain.rank)
+    # OVERWRITE CONFIG PARAMS HERE
+    experiment_name = "traj_K5"
+    cfg.method.method_name = "traj"
+    cfg.method.fib.K = 5
 
-    trajectories = mc.simulate(
-        num_steps=cfg.chain.length,
-        num_trajectories=cfg.general.trials,
-        burn_in=cfg.chain.burn_in,
-    )
+    # LOAD DATA HERE
+    dataset = SimTensorDataset(cfg)
+    trajectories, mc_true, mc_emp = dataset.get_data()
 
-    estimator = EmpiricalEstimator()
-    estimates = estimator.estimate_matrix_batch(trajectories, I)
-    P_emp_list, Q_emp_list = zip(*estimates)
-    mc_emp = [MarkovChainMatrix(P) for P in P_emp_list]
-    mc_true = [mc] * cfg.general.trials
-
-    # Train
-    trainer = Trainer(method_name=cfg.method.method_name, cfg=cfg, I=mc_true[0].I)
+    # LAUNCH TRAINER HERE
+    trainer = Trainer(experiment_name=experiment_name, cfg=cfg, I=mc_true[0].I)
     trainer.fit(trajectories, mc_true, mc_emp)
 
     wandb.finish()

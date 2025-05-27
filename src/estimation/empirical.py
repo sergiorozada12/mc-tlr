@@ -3,7 +3,9 @@ from typing import List, Tuple
 
 
 class EmpiricalEstimator:
-    def estimate_matrix(self, X: List[int], I: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def estimate_matrix(
+        self, X: List[int], I: int
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         assert set(X) <= set(range(I)), "State indices out of bounds."
 
         N = len(X)
@@ -16,11 +18,13 @@ class EmpiricalEstimator:
 
         Q = pairwise_counts / N
         P = pairwise_counts / marginal_counts
-        P[mask] = 1. / I
+        P[mask] = 1.0 / I
 
         return P, Q
 
-    def estimate_tensor(self, X: List[List[int]], Is: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def estimate_tensor(
+        self, X: List[List[int]], Is: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         D = len(Is)
         assert all(len(x) == D for x in X), "Each state must have D dimensions."
 
@@ -40,12 +44,16 @@ class EmpiricalEstimator:
 
         Q = pairwise_counts / N
         P = pairwise_counts / marginal_counts
-        P[mask] = 1. / I
+        P[mask] = 1.0 / I
 
         return P, Q
 
-    def estimate_matrix_batch(self, trajectories: List[List[int]], I: int) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+    def estimate_matrix_batch(
+        self, trajectories: List[List[int]], I: int
+    ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
         return [self.estimate_matrix(x, I) for x in trajectories]
 
-    def estimate_tensor_batch(self, trajectories: List[List[List[int]]], Is: torch.Tensor) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+    def estimate_tensor_batch(
+        self, trajectories: List[List[List[int]]], Is: torch.Tensor
+    ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
         return [self.estimate_tensor(x, Is) for x in trajectories]
