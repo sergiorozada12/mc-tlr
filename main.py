@@ -17,14 +17,14 @@ def main():
     os.environ["WANDB_PROJECT"] = "markov-chain-estimation"
 
     # OVERWRITE CONFIG PARAMS HERE
-    experiment_name = "fib_K5"
-    cfg.dataset.data_path = "data/sim_matrix.npy"
-    cfg.method.method_name = "fib"
-    cfg.method.fib.K = 5
-    cfg.method.fib.num_itrs = 1_000
+    experiment_name = "dc_K5"
+    cfg.dataset.data_path = "data/sim.npy"
+    cfg.method.method_name = "dc"
+    cfg.method.dc.K = 5
+    cfg.method.dc.num_itrs = 1_000
 
     # LOAD DATA HERE
-    dataset = SimTensorDataset(cfg.dataset)
+    dataset = SimMatrixDataset(cfg.dataset)
     trajectories, mc_true, mc_emp = dataset.get_data()
 
     # LAUNCH TRAINER HERE

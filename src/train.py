@@ -33,6 +33,7 @@ class Trainer:
     def fit(self, trajectories, mc_true, mc_emp):
         num_cpus = os.cpu_count() // 2
         trials = len(mc_true)
+
         def run_trial(X, mc_emp_trial):
             if self.method_name in {"dc", "nn"}:
                 P_emp = mc_emp_trial.P
@@ -52,8 +53,7 @@ class Trainer:
             return mc_est, diffs, costs
 
         results = Parallel(n_jobs=num_cpus)(
-            delayed(run_trial)(trajectories[t], mc_emp[t])
-            for t in range(trials)
+            delayed(run_trial)(trajectories[t], mc_emp[t]) for t in range(trials)
         )
         self._prepare_all_metrics(results, mc_true)
         self._log_all()
@@ -117,13 +117,25 @@ class Trainer:
             self.errors["kld"].setdefault("Q", []).append(float(kld_err(Q_true, Q_est)))
             self.errors["kld"].setdefault("R", []).append(float(kld_err(R_true, R_est)))
 
-            self.errors["frob"].setdefault("P", []).append(float(normfrob_err(P_true, P_est)))
-            self.errors["frob"].setdefault("Q", []).append(float(normfrob_err(Q_true, Q_est)))
-            self.errors["frob"].setdefault("R", []).append(float(normfrob_err(R_true, R_est)))
+            self.errors["frob"].setdefault("P", []).append(
+                float(normfrob_err(P_true, P_est))
+            )
+            self.errors["frob"].setdefault("Q", []).append(
+                float(normfrob_err(Q_true, Q_est))
+            )
+            self.errors["frob"].setdefault("R", []).append(
+                float(normfrob_err(R_true, R_est))
+            )
 
-            self.errors["l1"].setdefault("P", []).append(float(norml1_err(P_true, P_est)))
-            self.errors["l1"].setdefault("Q", []).append(float(norml1_err(Q_true, Q_est)))
-            self.errors["l1"].setdefault("R", []).append(float(norml1_err(R_true, R_est)))
+            self.errors["l1"].setdefault("P", []).append(
+                float(norml1_err(P_true, P_est))
+            )
+            self.errors["l1"].setdefault("Q", []).append(
+                float(norml1_err(Q_true, Q_est))
+            )
+            self.errors["l1"].setdefault("R", []).append(
+                float(norml1_err(R_true, R_est))
+            )
 
     def _log_all(self):
         self._log_barplots()

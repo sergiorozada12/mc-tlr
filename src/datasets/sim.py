@@ -5,6 +5,7 @@ from src.chains.generation import MatrixGenerator, TensorGenerator
 from src.chains.models import MarkovChainMatrix, MarkovChainTensor
 from src.estimation.empirical import EmpiricalEstimator
 
+
 class SimMatrixDataset:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -33,11 +34,14 @@ class SimMatrixDataset:
 
             if data_path is not None:
                 os.makedirs(os.path.dirname(data_path), exist_ok=True)
-                np.save(data_path, {
-                    "P_true": P_true.numpy(),
-                    "P_emp": [P.numpy() for P in P_emp_list],
-                    "trajectories": trajectories,
-                })
+                np.save(
+                    data_path,
+                    {
+                        "P_true": P_true.numpy(),
+                        "P_emp": [P.numpy() for P in P_emp_list],
+                        "trajectories": trajectories,
+                    },
+                )
 
         mc_true = [MarkovChainMatrix(P_true) for _ in range(self.cfg.trials)]
         mc_emp = [MarkovChainMatrix(P) for P in P_emp_list]
@@ -53,12 +57,13 @@ class SimTensorDataset:
 
     def get_data(self):
         dims = torch.tensor(self.cfg.dims)
+        I = torch.prod(dims).item()
         data_path = self.cfg.data_path
 
         if data_path is not None and os.path.exists(data_path):
             data = np.load(data_path, allow_pickle=True).item()
-            P_true = torch.tensor(data["P_true"])
-            P_emp_list = [torch.tensor(P) for P in data["P_emp"]]
+            P_true_mat = torch.tensor(data["P_true"])
+            P_emp_mats = [torch.tensor(P) for P in data["P_emp"]]
             trajectories = data["trajectories"]
         else:
             mc = self.generator.lowrank(dims, self.cfg.rank)
@@ -67,17 +72,27 @@ class SimTensorDataset:
                 num_trajectories=self.cfg.trials,
                 burn_in=self.cfg.burn_in,
             )
+
             estimates = self.estimator.estimate_tensor_batch(trajectories, dims)
-            P_emp_list, _ = zip(*estimates)
-            P_true = mc.P
+            P_emp_tensors, _ = zip(*estimates)
+            P_true_tensor = mc.P
+
+            P_true_mat = P_true_tensor.view(I, I)
+            P_emp_mats = [P.view(I, I) for P in P_emp_tensors]
 
             if data_path is not None:
                 os.makedirs(os.path.dirname(data_path), exist_ok=True)
-                np.save(data_path, {
-                    "P_true": P_true.numpy(),
-                    "P_emp": [P.numpy() for P in P_emp_list],
-                    "trajectories": trajectories,
-                })
+                np.save(
+                    data_path,
+                    {
+                        "P_true": P_true_mat.numpy(),
+                        "P_emp": [P.numpy() for P in P_emp_mats],
+                        "trajectories": trajectories,
+                    },
+                )
+
+        P_true = P_true_mat.view(*dims, *dims)
+        P_emp_list = [P.view(*dims, *dims) for P in P_emp_mats]
 
         mc_true = [MarkovChainTensor(P_true) for _ in range(self.cfg.trials)]
         mc_emp = [MarkovChainTensor(P) for P in P_emp_list]
