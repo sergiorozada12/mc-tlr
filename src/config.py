@@ -6,26 +6,17 @@ from typing import List, Optional
 class GeneralConfig:
     seed: int = 1000
     save_path: str = "results/"
-    data_path: str = "data/"
-    trials: int = 5
     use_wandb: bool = True
 
 
 @dataclass
 class ChainConfig:
     dims: List[int] = field(default_factory=lambda: [4, 4])
+    data_path: str = "data/sim_matrix.npy"
     rank: int = 5
     burn_in: int = 500
     length: int = 300
-
-
-@dataclass
-class TrainingConfig:
-    num_iters: int = 1000
-    tol: float = 1e-7
-    slide_window: int = 1000
-    eval_every: int = 50
-    save: bool = True
+    trials: int = 5
 
 
 @dataclass
@@ -37,6 +28,8 @@ class DCConfig:
     pmin: float = 1e-6
     num_inn_itrs: int = 10
     inn_tol: float = 1e-7
+    num_itrs: int = 1000
+    tol: float = 1e-7
     verbose: bool = True
 
 
@@ -47,6 +40,8 @@ class NNConfig:
     pmin: float = 1e-6
     gamma: float = 1.0
     verbose: bool = True
+    num_itrs: int = 1000
+    tol: float = 1e-7
 
 
 @dataclass
@@ -60,7 +55,6 @@ class SCPDConfig:
     K: int = 5
     qmin: float = 1e-6
     qmax: float = 1.0
-    tol: float = 1e-8
     slide_window: int = 1000
     alpha_type: str = "adam"
     alpha_factor: float = 1.0
@@ -72,6 +66,8 @@ class SCPDConfig:
     B: int = 10
     increase_B: bool = False
     acceleration: bool = True
+    num_itrs: int = 1000
+    tol: float = 1e-7
 
 
 @dataclass
@@ -89,6 +85,5 @@ class MethodConfig:
 @dataclass
 class MainConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
-    chain: ChainConfig = field(default_factory=ChainConfig)
-    training: TrainingConfig = field(default_factory=TrainingConfig)
+    dataset: ChainConfig = field(default_factory=ChainConfig)
     method: MethodConfig = field(default_factory=MethodConfig)

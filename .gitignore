@@ -6,6 +6,7 @@ wandb/
 legacy/
 synth_comparison/
 results/
+data/
 
 # C extensions
 *.so
