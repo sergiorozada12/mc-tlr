@@ -46,7 +46,7 @@ class Trainer:
                 Q_emp = ten_to_mat(mc_emp_trial.Q,int(torch.tensor(Q_emp.shape).prod().sqrt())) if mc_emp_trial.Q.ndim!=2 else mc_emp_trial.Q
                 result = self.method_instance.fit(Q_emp)
             elif self.method_name in {"fib", "ent", "traj"}:
-                Q_emp = mat_to_ten(mc_emp_trial.Q, Is) if not all(torch.tensor(mc_emp_trial.Q.shape)==self.Is.repeat(2)) else mc_emp_trial.Q
+                Q_emp = mat_to_ten(mc_emp_trial.Q, Is) if not all(torch.tensor(mc_emp_trial.Q.shape)==Is.repeat(2)) else mc_emp_trial.Q
                 result = self.method_instance.fit(X, Q_emp, Is)
             else:
                 raise ValueError(f"Unknown method: {self.method_name}")
