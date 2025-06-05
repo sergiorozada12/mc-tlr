@@ -19,11 +19,12 @@ def main(project, experiment_name, data_path):
 
     dataset = SimMatrixDataset(cfg.dataset)
     trajectories, mc_true, mc_emp = dataset.get_data()
+    Is = torch.tensor(cfg.dataset.dims)
 
     os.environ["WANDB_PROJECT"] = project
 
     trainer = Trainer(project=project, experiment_name=experiment_name, cfg=cfg)
-    trainer.fit(trajectories, mc_true, mc_emp)
+    trainer.fit(trajectories, mc_true, mc_emp, Is)
 
     wandb.finish()
 

@@ -75,7 +75,8 @@ class SCPD:
             if valid_joint_mat(Q_emp) and Is.ndim>1:
                 Q_emp = mat_to_ten(Q_emp,Is)
             elif valid_joint_ten(Q_emp):
-                Q_emp = mat_to_ten(ten_to_mat(Q_emp,int(Q_emp.shape[0].prod())),Is)
+                I = int(torch.tensor(Q_emp.shape).prod().sqrt())
+                Q_emp = mat_to_ten(ten_to_mat(Q_emp,I),Is)
             D = len(Is)
             DD = 2*D
             IIs = Is.repeat(2)
