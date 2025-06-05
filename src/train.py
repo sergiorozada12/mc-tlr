@@ -7,43 +7,47 @@ import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 from joblib import Parallel, delayed
 
-from src.utils import kld_err, normfrob_err, norml1_err, ten_to_mat
+from src.utils import kld_err, normfrob_err, norml1_err, ten_to_mat, mat_to_ten
 from src.estimation.baselines import IPDC, SGSADMM, SLRM
 from src.estimation.scpd import SCPD
 
+# TODO: Make saving results optional
+# TODO: How to save factor matrices and normalization weights?
 
 class Trainer:
-    def __init__(self, experiment_name: str, cfg, I: int):
+    def __init__(self, project: str, experiment_name: str, cfg ):
         self.cfg = cfg
-        self.I = I
+        self.project = project
         self.experiment_name = experiment_name
         self.method_name = cfg.method.method_name
-
-        self.method_args = self._get_method_args()
-        self.method_instance = self._instantiate_method()
         self.trial_results = []
 
         if self.cfg.general.use_wandb:
             wandb.init(
-                project="markov-chain-estimation",
+                project=self.project,
                 config=OmegaConf.to_container(cfg, resolve=True),
                 name=self.experiment_name,
             )
+            self.method_name = wandb.config['method']['method_name']
 
-    def fit(self, trajectories, mc_true, mc_emp):
+        # Initialize method arguments after initializing wandb for values that change
+        self.method_args = self._get_method_args()
+        self.method_instance = self._instantiate_method()
+    
+    def fit(self, trajectories, mc_true, mc_emp, Is=None):
         num_cpus = os.cpu_count() // 2
         trials = len(mc_true)
 
         def run_trial(X, mc_emp_trial):
             if self.method_name in {"dc", "nn"}:
-                P_emp = mc_emp_trial.P
+                P_emp = ten_to_mat(mc_emp_trial.P,int(torch.tensor(P_emp.shape).prod().sqrt())) if mc_emp_trial.P.ndim!=2 else mc_emp_trial.P
                 result = self.method_instance.fit(P_emp)
             elif self.method_name == "sm":
-                Q_emp = mc_emp_trial.Q
+                Q_emp = ten_to_mat(mc_emp_trial.Q,int(torch.tensor(Q_emp.shape).prod().sqrt())) if mc_emp_trial.Q.ndim!=2 else mc_emp_trial.Q
                 result = self.method_instance.fit(Q_emp)
             elif self.method_name in {"fib", "ent", "traj"}:
-                Q_emp = mc_emp_trial.Q
-                result = self.method_instance.fit(X, Q_emp)
+                Q_emp = mat_to_ten(mc_emp_trial.Q, Is) if not all(torch.tensor(mc_emp_trial.Q.shape)==self.Is.repeat(2)) else mc_emp_trial.Q
+                result = self.method_instance.fit(X, Q_emp, Is)
             else:
                 raise ValueError(f"Unknown method: {self.method_name}")
 
@@ -58,6 +62,10 @@ class Trainer:
         self._prepare_all_metrics(results, mc_true)
         self._log_all()
         self._save_results_as_json()
+
+        # Values tracked for sweeps
+        wandb.log({"qloss":float(np.mean(self.errors['kld']['Q']))})
+        wandb.log({"ploss":float(np.mean(self.errors['kld']['P']))})
 
     def _instantiate_method(self):
         if self.method_name == "dc":
