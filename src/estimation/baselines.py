@@ -6,8 +6,8 @@ from src.chains.models import MarkovChainMatrix
 from src.utils import (
     kld_err,
     qmat_to_pmat,
-    check_valid_transition_mat,
-    check_valid_joint_mat,
+    valid_transition_mat,
+    valid_joint_mat,
 )
 
 
@@ -31,7 +31,7 @@ class SGSADMM:
         self.verbose = verbose
 
     def fit(self, P_emp):
-        check_valid_transition_mat(P_emp)
+        assert valid_transition_mat(P_emp), "Invalid transition probability matrix. Expecting a right-stochastic square matrix with entries in [0,1]."
         I = P_emp.shape[0]
         pmin_tensor = torch.tensor(self.pmin, device=P_emp.device, dtype=P_emp.dtype)
 
@@ -116,7 +116,7 @@ class SGSADMM:
                 )
                 tic = perf_counter()
 
-            if diff < self.tol:
+            if self.verbose and diff < self.tol:
                 print(f"Terminating early @ {itr+1} iters. Diff = {diff:.2e}")
                 break
 
@@ -150,7 +150,7 @@ class IPDC:
         self.verbose = verbose
 
     def fit(self, P_emp):
-        check_valid_transition_mat(P_emp)
+        assert valid_transition_mat(P_emp), "Invalid transition probability matrix. Expecting a right-stochastic square matrix with entries in [0,1]."
         I = P_emp.shape[0]
         pmin_tensor = torch.tensor(self.pmin, device=P_emp.device, dtype=P_emp.dtype)
 
@@ -266,7 +266,7 @@ class IPDC:
                 )
                 tic = perf_counter()
 
-            if diff < self.tol:
+            if self.verbose and diff < self.tol:
                 print(f"Terminating early @ {itr+1}. Diff = {diff:.2e}")
                 break
 
@@ -280,7 +280,7 @@ class SLRM:
         self.qmin = qmin
 
     def fit(self, Q_emp):
-        check_valid_joint_mat(Q_emp)
+        assert valid_joint_mat(Q_emp), "Invalid joint probability matrix. Expecting a square matrix with entries in [0,1] that sum to 1."
         I = Q_emp.shape[0]
         qmin_tensor = torch.tensor(self.qmin, device=Q_emp.device, dtype=Q_emp.dtype)
 

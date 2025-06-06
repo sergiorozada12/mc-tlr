@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+# TODO: Need to figure out how to give dimensions for tensor prediction
 
 @dataclass
 class GeneralConfig:
@@ -28,7 +29,7 @@ class DCConfig:
     pmin: float = 1e-6
     num_inn_itrs: int = 10
     inn_tol: float = 1e-7
-    num_itrs: int = 1000
+    num_itrs: int = 2000
     tol: float = 1e-7
     verbose: bool = True
 
@@ -40,7 +41,7 @@ class NNConfig:
     pmin: float = 1e-6
     gamma: float = 1.0
     verbose: bool = True
-    num_itrs: int = 1000
+    num_itrs: int = 2000
     tol: float = 1e-7
 
 
@@ -64,10 +65,12 @@ class SCPDConfig:
     beta: float = 0.5
     eps: float = 1e-9
     B: int = 10
+    B_max: int = 10
     increase_B: bool = False
     acceleration: bool = True
-    num_itrs: int = 1000
+    num_itrs: int = 10000
     tol: float = 1e-7
+    verbose: bool = True
 
 
 @dataclass

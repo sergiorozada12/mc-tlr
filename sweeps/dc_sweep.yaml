@@ -1,0 +1,28 @@
+description: Sweep test using dc estimation
+
+# program and project only used when running sweep from CLI
+program: sweep.py
+project: markov-chain-estimation
+
+method: grid
+metric:
+  name: qloss
+  goal: minimize
+
+parameters:
+  method:
+    parameters:
+      method_name:
+        value: "dc"
+      dc:
+        parameters:
+          num_itrs:
+            value: 1000
+          K:
+            values: [ 1, 2, 3 ]
+          alpha:
+            values: [ 0.1, 1.0 ]
+          gamma:
+            values: [ 0.1, 1.0, 10.0 ]
+          num_inn_itrs:
+            values: [ 1, 10, 50 ]
