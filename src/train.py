@@ -11,61 +11,73 @@ from src.utils import kld_err, normfrob_err, norml1_err, ten_to_mat, mat_to_ten
 from src.estimation.baselines import IPDC, SGSADMM, SLRM
 from src.estimation.scpd import SCPD
 
-# TODO: Make saving results optional
-# TODO: How to save factor matrices and normalization weights?
 
 class Trainer:
-    def __init__(self, project: str, experiment_name: str, cfg ):
+    def __init__(
+            self,
+            project: str,
+            experiment_name: str,
+            cfg,
+            log_results: bool=True,
+            save_results: bool=True):
         self.cfg = cfg
         self.project = project
         self.experiment_name = experiment_name
         self.method_name = cfg.method.method_name
+        self.log_results = log_results
+        self.save_results = save_results
+
         self.trial_results = []
 
-        if self.cfg.general.use_wandb:
-            wandb.init(
-                project=self.project,
-                config=OmegaConf.to_container(cfg, resolve=True),
-                name=self.experiment_name,
-            )
-            self.method_name = wandb.config['method']['method_name']
-
-        # Initialize method arguments after initializing wandb for values that change
         self.method_args = self._get_method_args()
         self.method_instance = self._instantiate_method()
     
-    def fit(self, trajectories, mc_true, mc_emp, Is=None):
+    def fit(self, dataset):
+        use_tensor = self.method_name in ['ent', 'fib', 'traj']
+        traj_true, traj_emp, mc_true, mc_emp = dataset.get_data(use_tensor)
+
         num_cpus = os.cpu_count() // 2
         trials = len(mc_true)
 
-        def run_trial(X, mc_emp_trial):
+        def run_trial(traj_trial, mc_emp_trial):
             if self.method_name in {"dc", "nn"}:
-                P_emp = ten_to_mat(mc_emp_trial.P,int(torch.tensor(P_emp.shape).prod().sqrt())) if mc_emp_trial.P.ndim!=2 else mc_emp_trial.P
+                P_emp = ten_to_mat(
+                    mc_emp_trial.P,
+                    int(torch.tensor(P_emp.shape).prod().sqrt())) if mc_emp_trial.P.ndim!=2 else mc_emp_trial.P
                 result = self.method_instance.fit(P_emp)
             elif self.method_name == "sm":
-                Q_emp = ten_to_mat(mc_emp_trial.Q,int(torch.tensor(Q_emp.shape).prod().sqrt())) if mc_emp_trial.Q.ndim!=2 else mc_emp_trial.Q
+                Q_emp = ten_to_mat(
+                    mc_emp_trial.Q,
+                    int(torch.tensor(Q_emp.shape).prod().sqrt())) if mc_emp_trial.Q.ndim!=2 else mc_emp_trial.Q
                 result = self.method_instance.fit(Q_emp)
             elif self.method_name in {"fib", "ent", "traj"}:
                 Q_emp = mc_emp_trial.Q
-                result = self.method_instance.fit(X, Q_emp, Is)
+                result = self.method_instance.fit(traj_trial, Q_emp, dataset.Is)
             else:
                 raise ValueError(f"Unknown method: {self.method_name}")
 
             mc_est = result["mc_est"]
             diffs = result.get("diffs", None)
             costs = result.get("costs", None)
-            return mc_est, diffs, costs
+            factors = result.get("Qds", None)
+            weights = result.get("l", None)
+            return mc_est, diffs, costs, factors, weights
 
         results = Parallel(n_jobs=num_cpus)(
-            delayed(run_trial)(trajectories[t], mc_emp[t]) for t in range(trials)
+            delayed(run_trial)(traj_emp[t], mc_emp[t]) for t in range(trials)
         )
-        self._prepare_all_metrics(results, mc_true)
-        self._log_all()
-        self._save_results_as_json()
 
-        # Values tracked for sweeps
-        wandb.log({"qloss":float(np.mean(self.errors['kld']['Q']))})
-        wandb.log({"ploss":float(np.mean(self.errors['kld']['P']))})
+        # ONLY NOT NONE WHEN WE RUN TENSOR METHODS
+        self.factors = [r[3] for r in results]
+        self.weights = [r[4] for r in results]
+
+        self._prepare_all_metrics(results, mc_true)
+
+        if self.log_results:
+            self._log_all()
+
+        if self.save_results:
+            self._save_results_as_json()
 
     def _instantiate_method(self):
         if self.method_name == "dc":
@@ -224,6 +236,10 @@ class Trainer:
             "results": self.errors,
             "matrices": matrices,
         }
+
+        if self.factors[0] is not None:
+            result_dict["factors"] = [[[f.numpy().tolist() for f in trial_factors] for trial_factors in self.factors]][0]
+            result_dict["weights"] = [w.numpy().tolist() for w in self.weights]
 
         path = os.path.join(self.cfg.general.save_path, f"{self.experiment_name}.json")
         with open(path, "w") as f:

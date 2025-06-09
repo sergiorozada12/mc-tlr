@@ -1,0 +1,45 @@
+description: Sweep test using fib estimation
+
+# program and project only used when running sweep from CLI
+program: sweep.py
+project: markov-chain-estimation
+
+method: grid
+metric:
+  name: qloss
+  goal: minimize
+
+parameters:
+  method:
+    parameters:
+      method_name:
+        value: "ent"
+      ent:
+        parameters:
+          num_itrs:
+            value: 5000
+            # value: 10000
+          B:
+            value: 20
+          B_max:
+            value: 100
+          increase_B:
+            value: False
+          K:
+            values: [ 3, 5, 7 ]
+          alpha_factor:
+            values: [ .01, .1 ]
+            # values: [ .01, .1, 1. ]
+          alpha_weight:
+            # values: [ .01, .1, 1. ]
+            values: [ .01, .1 ]
+          gamma_factor:
+            # values: [ 0., .1, .3 ]
+            value: 0.1
+          gamma_weight:
+            # values: [ 0., .1, .3 ]
+            value: 0.1
+          beta:
+            # values: [ .1, .5 ]
+            value: .5
+

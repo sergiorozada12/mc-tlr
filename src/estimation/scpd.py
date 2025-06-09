@@ -24,7 +24,7 @@ class SCPD:
         K: int,
         qmin: float = 0.0,
         qmax: float = 1.0,
-        sampling_type: str = "trajectory",
+        sampling_type: str = "traj",
         alpha_type: str = "adam",
         alpha_factor: float = 1.0,
         alpha_weight: float = 1.0,
@@ -44,7 +44,7 @@ class SCPD:
         self.K = K
         self.qmin = qmin
         self.qmax = qmax
-        self.sampling_type = sampling_type or "trajectory"
+        self.sampling_type = sampling_type or "traj"
         self.alpha_type = alpha_type or "constant"
         self.alpha_factor_init = alpha_factor
         self.alpha_weight_init = alpha_weight
@@ -88,19 +88,22 @@ class SCPD:
 
         obs_pairs = (
             torch.where(Q_emp.flatten() != 0)[0]
-            if self.sampling_type == "entry"
+            if self.sampling_type == "ent"
             else None
         )
-        R_emp = (
-            0.5 * (Q_emp.sum(tuple(range(D, 2 * D))) + Q_emp.sum(tuple(range(D))))
-            if self.sampling_type == "trajectory"
-            else None
-        )
-        chain_transitions = (
-            torch.hstack([torch.stack(chain[1:]), torch.stack(chain[:-1])])
-            if self.sampling_type == "trajectory"
-            else None
-        )
+
+        if self.sampling_type == "traj":
+            R_emp = 0.5 * (Q_emp.sum(tuple(range(D, 2 * D))) + Q_emp.sum(tuple(range(D))))
+        else:
+            R_emp = None
+
+        if self.sampling_type == "traj":
+            chain = torch.as_tensor(chain, dtype=torch.long)
+            chain_transitions = torch.stack([
+                torch.stack([chain[i], chain[i+1]]) for i in range(len(chain) - 1)
+            ])
+        else:
+            chain_transitions = None
 
         diffs, costs, variances = [], [], []
         alpha_factor, alpha_weight = self.alpha_factor_init, self.alpha_weight_init
@@ -273,8 +276,10 @@ class SCPD:
             gl = -(ml / (Hl @ l + self.eps)) @ Hl / B
 
             if self.gamma_weight > 0:
+                # GET ERGODIC FIBERS
                 B_erg = int(np.minimum(B, I))
                 fibs_erg = np.random.choice(I, B_erg, replace=False)
+
                 H0_erg = khatri_rao(Qds[:D])[fibs_erg]
                 H1_erg = khatri_rao(Qds[D:])[fibs_erg]
                 gl_erg = (
@@ -303,13 +308,9 @@ class SCPD:
             gl = torch.stack(gls).sum(0) / B
 
             if self.gamma_weight > 0:
+                # ALWAYS TAKE FIRST D DIMENSIONS WLOG
                 B_erg = np.minimum(B, len(chain))
-                steps_erg = torch.stack(chain)[
-                    np.random.choice(len(chain), B_erg, replace=False)
-                ]
-
-                # I think next line is wrong, chain is a collection of states, not transitions, so it is not needed
-                # steps_erg = [step[:D] if np.random.rand() < .5 else step[D:] for step in steps_erg]
+                steps_erg = [step[:D] for step in steps]
 
                 hs0 = [
                     torch.stack([Qds[d][step[d % D]] for d in range(D)]).prod(0)
@@ -330,34 +331,28 @@ class SCPD:
                 gl += gl_erg
 
         elif self.sampling_type == "traj":
-            if R_emp is None:
-                R_emp = 0.5 * (
-                    Q_emp.sum(tuple(range(D, 2 * D))) + Q_emp.sum(tuple(range(D)))
-                )
-            if chain_transitions is None:
-                chain_transitions = torch.hstack(
-                    [torch.stack(chain[1:]), torch.stack(chain[:-1])]
-                )
 
-            B = np.minimum(self.B, len(chain) - 1)
-            inds = np.random.choice(len(chain) - 1, B, replace=False)
-            steps = chain_transitions[inds]
+            B = min(self.B, len(chain_transitions))
+            inds = np.random.choice(len(chain_transitions), B, replace=False)
+            steps = chain_transitions[inds]  # shape (B, 2, D)
+            steps = steps.reshape(B, -1)     # shape (B, 2D)
 
             hls = [
-                torch.stack([Qds[d][step[d]] for d in range(DD)]).prod(0)
+                torch.stack([Qds[d][int(step[d])] for d in range(DD)]).prod(0)
                 for step in steps
             ]
-            gls = [-hls[i] / (hls[i] @ l + self.eps) for i, step in enumerate(steps)]
+
+            gls = [
+                -hls[i] / (hls[i] @ l + self.eps)
+                for i in range(B)
+            ]
+
             gl = torch.stack(gls).sum(0) / B
 
             if self.gamma_weight > 0:
+                # ALWAYS TAKE FIRST D DIMENSIONS WLOG
                 B_erg = np.minimum(B, len(chain))
-                steps_erg = torch.stack(chain)[
-                    np.random.choice(len(chain), B_erg, replace=False)
-                ]
-
-                # I think next line is wrong, chain is a collection of states, not transitions, so it is not needed
-                # steps_erg = [step[:D] if np.random.rand() < .5 else step[D:] for step in steps_erg]
+                steps_erg = [step[:D] for step in steps]
 
                 hs0 = [
                     torch.stack([Qds[d][step[d % D]] for d in range(D)]).prod(0)
@@ -405,12 +400,8 @@ class SCPD:
                 B_erg = int(np.minimum(B, int(I / IIs[d])))
                 fibs_erg = np.random.choice(int(I / IIs[d]), B_erg, replace=False)
 
-                Q0_erg = unfold(cp_to_tensor((l, Qds[:D])), mode=d % D).T[fibs_erg] * (
-                    2 * (d < D) - 1
-                )
-                Q1_erg = unfold(cp_to_tensor((l, Qds[D:])), mode=d % D).T[fibs_erg] * -(
-                    2 * (d < D) - 1
-                )
+                Q0_erg = unfold(cp_to_tensor((l, Qds[:D])), mode=d % D).T[fibs_erg] * (2 * (d < D) - 1)
+                Q1_erg = unfold(cp_to_tensor((l, Qds[D:])), mode=d % D).T[fibs_erg] * -(2 * (d < D) - 1)
                 H_erg = khatri_rao(
                     [Qds[i] for i in np.arange(D) + D * (d >= D) if i != d]
                 )[fibs_erg]
@@ -448,7 +439,8 @@ class SCPD:
             Gd = torch.stack(Gds).sum(0) / B
 
             if self.gamma_factor > 0:
-                steps_erg = [step[:D] if d < D else step[D:] for step in steps]
+                # ALWAYS TAKE FIRST D DIMENSIONS WLOG
+                steps_erg = [step[:D] for step in steps]
 
                 Q0 = cp_to_tensor((l, Qds[:D])) * (2 * (d < D) - 1)
                 Q1 = cp_to_tensor((l, Qds[D:])) * -(2 * (d < D) - 1)
@@ -480,34 +472,33 @@ class SCPD:
         elif self.sampling_type == "traj":
             if Q_est is None:
                 Q_est = cp_to_tensor((l, Qds))
-            if R_emp is None:
-                R_emp = 0.5 * (
-                    Q_emp.sum(tuple(range(D, 2 * D))) + Q_emp.sum(tuple(range(D)))
-                )
-            if chain_transitions is None:
-                chain_transitions = torch.hstack(
-                    [torch.stack(chain[1:]), torch.stack(chain[:-1])]
-                )
 
-            B = np.minimum(self.B, len(chain) - 1)
-            inds = np.random.choice(len(chain) - 1, B, replace=False)
-            steps = chain_transitions[inds]
+            B = min(self.B, len(chain_transitions))
+            inds = np.random.choice(len(chain_transitions), B, replace=False)
+            steps = chain_transitions[inds]  # shape (B, 2, D)
+
+            steps = steps.reshape(B, -1)  # shape (B, 2D), concatenate source + target
 
             hds = [
-                torch.stack([Qds[j][step[j]] for j in range(DD) if j != d]).prod(0)
+                torch.stack([Qds[j][int(step[j])] for j in range(DD) if j != d]).prod(0)
                 for step in steps
             ]
+
             gds = [
-                -hds[i] * l / (Q_est[*step] + self.eps) for i, step in enumerate(steps)
-            ]
-            Gds = [
-                torch.outer(torch.eye(IIs[d])[step[d]], gds[i])
+                -hds[i] * l / (Q_est[tuple(step.tolist())] + self.eps)
                 for i, step in enumerate(steps)
             ]
+
+            Gds = [
+                torch.outer(torch.eye(IIs[d])[int(step[d])], gds[i])
+                for i, step in enumerate(steps)
+            ]
+
             Gd = torch.stack(Gds).sum(0) / B
 
             if self.gamma_factor > 0:
-                steps_erg = [step[:D] if d < D else step[D:] for step in steps]
+                # ALWAYS TAKE FIRST D DIMENSIONS WLOG
+                steps_erg = [step[:D] for step in steps]
 
                 Q0 = cp_to_tensor((l, Qds[:D])) * (2 * (d < D) - 1)
                 Q1 = cp_to_tensor((l, Qds[D:])) * -(2 * (d < D) - 1)
