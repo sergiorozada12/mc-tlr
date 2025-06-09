@@ -11,7 +11,10 @@ from src.utils import (
     norml1_err,
     kld_err,
     qten_to_pten,
-    check_valid_joint_ten,
+    valid_joint_ten,
+    valid_joint_mat,
+    mat_to_ten,
+    ten_to_mat,
 )
 
 
@@ -36,6 +39,7 @@ class SCPD:
         tol: float = 1e-8,
         num_itrs: int = 1000,
         slide_window: int = 50,
+        verbose: bool = False,
     ):
         self.K = K
         self.qmin = qmin
@@ -55,15 +59,28 @@ class SCPD:
         self.tol = tol
         self.num_itrs = num_itrs
         self.slide_window = slide_window
+        self.verbose = verbose
 
-    def fit(self, chain, Q_emp):
-        check_valid_joint_ten(Q_emp)
-
-        DD = Q_emp.ndim
-        D = DD // 2
-        IIs = torch.tensor(Q_emp.shape)
-        Is = IIs[:D]
-        II = IIs.prod().item()
+    def fit(self, chain, Q_emp, Is=None):
+        assert valid_joint_ten(Q_emp) or valid_joint_mat(Q_emp), "Invalid joint probabilities. Expecting valid probability tensor or matrix."
+        if Is is None:
+            assert valid_joint_ten(Q_emp), "Invalid joint probability tensor. Expecting tensor with an even number of dimensions with entries in [0,1] that sum to 1."
+            DD = Q_emp.ndim
+            D = DD // 2
+            IIs = torch.tensor(Q_emp.shape)
+            Is = IIs[:D]
+            II = IIs.prod().item()
+        else:
+            assert torch.tensor(Q_emp.shape).prod()==Is.prod()**2, "Inconsistent number of states between empirical tensor and given dimensions."
+            if valid_joint_mat(Q_emp) and Is.ndim>1:
+                Q_emp = mat_to_ten(Q_emp,Is)
+            elif valid_joint_ten(Q_emp):
+                I = int(torch.tensor(Q_emp.shape).prod().sqrt())
+                Q_emp = mat_to_ten(ten_to_mat(Q_emp,I),Is)
+            D = len(Is)
+            DD = 2*D
+            IIs = Is.repeat(2)
+            II = IIs.prod().item()
 
         Q_est, Qds, l = self._init_tensor(IIs)
         Qds_upd = [Q.clone() for Q in Qds]
@@ -162,18 +179,20 @@ class SCPD:
                 variances.append(var)
 
                 toc = perf_counter()
-                if (out_itr == 0 and inn_itr == 0) or (toc - tic > 2):
+                if self.verbose and (out_itr == 0 and inn_itr == 0) or (toc - tic > 2):
                     print(
                         f"MTTKRP: {out_itr+1}/{num_mttkrps} | Cost: {cost:.3e} | Diff: {diff:.1e} | Var: {var:.1e}"
                     )
                     tic = perf_counter()
 
                 if np.isnan(cost) or torch.allclose(Q_est, torch.zeros_like(Q_est)):
-                    print("Invalid solution. Returning null.")
+                    if self.verbose:
+                        print("Invalid solution. Returning null.")
                     return None
 
                 if tot_itr >= self.slide_window and var < self.tol:
-                    print(f"Terminating early @ {out_itr+1}. Variance = {var:.1e}")
+                    if self.verbose:
+                        print(f"Terminating early @ {out_itr+1}. Variance = {var:.1e}")
                     TERMINATE = True
                     break
 

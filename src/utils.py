@@ -3,12 +3,11 @@ import torch
 import tensorly as tl
 from scipy.special import kl_div
 
-
 tl.set_backend("pytorch")
 
 
 def ten_to_mat(Xten, I):
-    return Xten.reshape(I, I)
+    return Xten.reshape(I, -1)
 
 
 def mat_to_ten(Xmat, Is):
@@ -202,67 +201,66 @@ def pten_to_qten(P):
     return mat_to_ten(Q, Is)
 
 
-def check_valid_transition_mat(P):
-    assert (
+def valid_transition_mat(P):
+    return (
         P.ndim == 2
         and P.shape[0] == P.shape[1]
         and (P >= 0).all()
         and (P <= 1).all()
         and torch.allclose(P.sum(1), torch.ones(P.shape[0]))
-    ), "Invalid transition probability matrix. Expecting a right-stochastic square matrix with entries in [0,1]."
+    )
 
 
-def check_valid_joint_mat(Q):
-    assert (
+def valid_joint_mat(Q):
+    return (
         Q.ndim == 2
         and Q.shape[0] == Q.shape[1]
         and (Q >= 0).all()
         and (Q <= 1).all()
         and torch.isclose(Q.sum(), torch.ones_like(Q.sum()))
-    ), "Invalid joint probability matrix. Expecting a square matrix with entries in [0,1] that sum to 1."
+    )
 
 
-def check_valid_transition_ten(P):
+def valid_transition_ten(P):
     D = P.ndim // 2
-    assert (
+    flag = (
         P.ndim % 2 == 0
         and P.size()[:D] == P.size()[D:]
         and (P >= 0).all()
         and (P <= 1).all()
-    ), "Invalid transition probability tensor. Expecting right-stochastic tensor with an even number of dimensions with entries in [0,1]."
+    )
     Is = torch.tensor(P.shape[:D])
     I = Is.prod().item()
-    check_valid_transition_mat(ten_to_mat(P, I))
+    return flag and valid_transition_mat(ten_to_mat(P, I))
 
 
-def check_valid_joint_ten(Q):
+def valid_joint_ten(Q):
     D = Q.ndim // 2
-    assert (
+    return (
         Q.ndim % 2 == 0
         and Q.size()[:D] == Q.size()[D:]
         and (Q >= 0).all()
         and (Q <= 1).all()
         and torch.isclose(Q.sum(), torch.ones_like(Q.sum()))
-    ), "Invalid joint probability tensor. Expecting tensor with an even number of dimensions with entries in [0,1] that sum to 1."
+    )
 
 
-def check_valid_chain_mat(X, I=None):
-    assert all(list(map(np.isscalar, X))) or all(
-        list(map(lambda x: x.numel() == 1, X))
-    ), "Inconsistent state dimensions across chain."
+def valid_chain_mat(X, I=None):
+    flag = (
+        all(list(map(np.isscalar, X))) or 
+        all(list(map(lambda x: x.numel() == 1, X)))
+    )
     if I is not None:
-        assert (torch.FloatTensor(X) < I).all() and (
-            torch.FloatTensor(X) >= 0
-        ).all(), "Inconsistent state dimensions between tensor dimensions and chain."
+        flag = flag and ((torch.FloatTensor(X) < I).all() and 
+                         (torch.FloatTensor(X) >= 0).all())
+    return flag
 
 
-def check_valid_chain_ten(X, Is=None):
-    assert all(
+def valid_chain_ten(X, Is=None):
+    flag = all(
         len(X[0]) == np.array(list(map(len, X)))
-    ), "Inconsistent state dimensions across chain."
+    )
     if Is is not None:
-        assert (torch.stack(X) < Is[None]).flatten().all() and (
-            torch.stack(X) >= 0
-        ).flatten().all(), (
-            "Inconsistent state dimensions between tensor dimensions and chain."
-        )
+        flag = flag and ((torch.stack(X) < Is[None]).flatten().all() and 
+                         (torch.stack(X) >= 0).flatten().all())
+    return flag

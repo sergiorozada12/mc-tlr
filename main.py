@@ -14,21 +14,23 @@ def main():
     torch.manual_seed(cfg.general.seed)
     torch.set_num_threads(1)
 
-    os.environ["WANDB_PROJECT"] = "markov-chain-estimation"
+    project = "markov-chain-estimation"
+    os.environ["WANDB_PROJECT"] = project
 
     # OVERWRITE CONFIG PARAMS HERE
     experiment_name = "dc_K5"
-    cfg.dataset.data_path = "data/sim.npy"
+    cfg.dataset.data_path = "data/sim_mad.npy"
     cfg.method.method_name = "dc"
     cfg.method.dc.K = 5
     cfg.method.dc.num_itrs = 1_000
 
     # LOAD DATA HERE
     dataset = SimMatrixDataset(cfg.dataset)
+    dataset = SimTensorDataset(cfg.dataset)
     trajectories, mc_true, mc_emp = dataset.get_data()
 
     # LAUNCH TRAINER HERE
-    trainer = Trainer(experiment_name=experiment_name, cfg=cfg, I=mc_true[0].I)
+    trainer = Trainer(project=project, experiment_name=experiment_name, cfg=cfg )
     trainer.fit(trajectories, mc_true, mc_emp)
 
     wandb.finish()
