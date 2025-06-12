@@ -35,10 +35,10 @@ parameters:
             values: [ .01, .1 ]
           gamma_factor:
             # values: [ 0., .1, .3 ]
-            value: 0.
+            value: 0.1
           gamma_weight:
             # values: [ 0., .1, .3 ]
-            value: 0.
+            value: 0.1
           beta:
             # values: [ .1, .5 ]
             value: .5
