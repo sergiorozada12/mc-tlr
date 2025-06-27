@@ -15,6 +15,7 @@ from src.utils import (
     valid_joint_mat,
     mat_to_ten,
     ten_to_mat,
+    laplace_smoothing,
 )
 
 
@@ -39,6 +40,7 @@ class SCPD:
         tol: float = 1e-8,
         num_itrs: int = 1000,
         slide_window: int = 50,
+        forget_window: int = 1000,
         verbose: bool = False,
     ):
         self.K = K
@@ -59,7 +61,26 @@ class SCPD:
         self.tol = tol
         self.num_itrs = num_itrs
         self.slide_window = slide_window
+        self.forget_window = forget_window
         self.verbose = verbose
+        
+        assert qmin>=0. and qmin<=1., "Invalid `qmin`. Must be between 0 and 1."
+        assert qmax>=0. and qmax<=1., "Invalid `qmax`. Must be between 0 and 1."
+        assert qmin<=qmax, "Invalid `qmax` and `qmin`. `qmax` must be greater than or equal to `qmin`."
+        assert sampling_type in ['traj','ent','fib',None], "Invalid `sampling_type`. Expecting 'traj', 'ent', or 'fib'."
+        assert alpha_type in ['adam','decay','constant',None], "Invalid `alpha_type`. Expecting 'adam', 'decay', or 'constant'."
+        assert alpha_factor>=0., "Invalid `alpha_factor`. Expecting a nonnegative float."
+        assert alpha_weight>=0., "Invalid `alpha_weight`. Expecting a nonnegative float."
+        assert gamma_factor>=0., "Invalid `gamma_factor`. Expecting a nonnegative float."
+        assert gamma_weight>=0., "Invalid `gamma_weight`. Expecting a nonnegative float."
+        assert beta>=0., "Invalid `beta`. Expecting a nonnegative float."
+        assert eps>=0., "Invalid `eps`. Expecting a nonnegative float."
+        assert type(B)==int and B>0, "Invalid `B`. Expecting a positive integer."
+        assert type(B_max)==int and B_max>0 and B_max>=B, "Invalid `B_max`. Expecting a positive integer at least as large as `B`."
+        assert type(num_itrs)==int and num_itrs>0, "Invalid `num_itrs`. Expecting a positive integer."
+        assert type(slide_window)==int and slide_window>0 and slide_window<=num_itrs, "Invalid `slide_window`. Expecting a positive integer at most `num_itrs`."
+        assert type(forget_window)==int and forget_window>0 and forget_window<=num_itrs and forget_window>=slide_window, "Invalid `forget_window`. Expecting a positive integer at most `num_itrs` and at least `slide_window`."
+        assert tol>=0., "Invalid `tol`. Expecting a nonnegative float."
 
     def fit(self, chain, Q_emp, Is=None):
         assert valid_joint_ten(Q_emp) or valid_joint_mat(Q_emp), "Invalid joint probabilities. Expecting valid probability tensor or matrix."
@@ -170,7 +191,7 @@ class SCPD:
 
                 Q_est = cp_to_tensor((l, Qds))
                 diff = norml1_err(Q_est, Q_last)
-                cost = kld_err(Q_emp, Q_est)
+                cost = kld_err(Q_emp, Q_est, smoothing=True)
                 var = (
                     np.var(costs[tot_itr - self.slide_window : tot_itr])
                     if tot_itr >= self.slide_window
@@ -180,9 +201,13 @@ class SCPD:
                 diffs.append(diff)
                 costs.append(cost)
                 variances.append(var)
+                if len(diffs) > self.forget_window:
+                    diffs = diffs[-self.forget_window:]
+                    costs = costs[-self.forget_window:]
+                    variances = variances[-self.forget_window:]
 
                 toc = perf_counter()
-                if self.verbose and (out_itr == 0 and inn_itr == 0) or (toc - tic > 2):
+                if self.verbose and ((out_itr == 0 and inn_itr == 0) or (toc - tic > 5)):
                     print(
                         f"MTTKRP: {out_itr+1}/{num_mttkrps} | Cost: {cost:.3e} | Diff: {diff:.1e} | Var: {var:.1e}"
                     )

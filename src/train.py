@@ -6,8 +6,9 @@ import json
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 from joblib import Parallel, delayed
+from time import perf_counter
 
-from src.utils import kld_err, normfrob_err, norml1_err, ten_to_mat, mat_to_ten
+from src.utils import kld_err, normfrob_err, norml1_err, ten_to_mat, mat_to_ten, laplace_smoothing
 from src.estimation.baselines import IPDC, SGSADMM, SLRM
 from src.estimation.scpd import SCPD
 
@@ -35,6 +36,7 @@ class Trainer:
     def fit(self, dataset):
         use_tensor = self.method_name in ['ent', 'fib', 'traj']
         traj_true, traj_emp, mc_true, mc_emp = dataset.get_data(use_tensor)
+        self.traj_length = traj_true.shape[1]
 
         num_cpus = os.cpu_count() // 2
         trials = len(mc_true)
@@ -63,9 +65,13 @@ class Trainer:
             weights = result.get("l", None)
             return mc_est, diffs, costs, factors, weights
 
-        results = Parallel(n_jobs=num_cpus)(
-            delayed(run_trial)(traj_emp[t], mc_emp[t]) for t in range(trials)
-        )
+        tic = perf_counter()
+        with Parallel(n_jobs=num_cpus) as parallel:
+            results = parallel(
+                delayed(run_trial)(traj_emp[t], mc_emp[t]) for t in range(trials)
+            )
+        toc = perf_counter()
+        run_time = toc-tic
 
         # ONLY NOT NONE WHEN WE RUN TENSOR METHODS
         self.factors = [r[3] for r in results]
@@ -75,6 +81,15 @@ class Trainer:
 
         if self.log_results:
             self._log_all()
+
+            wandb.log( {"qkld": float( np.median(self.errors['kld']['Q']) )} )
+            wandb.log( {"pkld": float( np.median(self.errors['kld']['P']) )} )
+            wandb.log( {"rkld": float( np.median(self.errors['kld']['R']) )} )
+            wandb.log( {"runtime":float(run_time)} )
+            # wandb.log( {"ql1": float( np.mean(self.errors['l1']['Q']) )} )
+            # wandb.log( {"pl1": float( np.mean(self.errors['l1']['P']) )} )
+            # wandb.log( {"qfrob": float( np.mean(self.errors['frob']['Q']) )} )
+            # wandb.log( {"pfrob": float( np.mean(self.errors['frob']['P']) )} )
 
         if self.save_results:
             self._save_results_as_json()
@@ -133,9 +148,15 @@ class Trainer:
             self.R_true.append(R_true)
             self.R_est.append(R_est)
 
-            self.errors["kld"].setdefault("P", []).append(float(kld_err(P_true, P_est)))
-            self.errors["kld"].setdefault("Q", []).append(float(kld_err(Q_true, Q_est)))
-            self.errors["kld"].setdefault("R", []).append(float(kld_err(R_true, R_est)))
+            self.errors["kld"].setdefault("Q", []).append(
+                float(kld_err(Q_true, Q_est, smoothing=True, N=self.traj_length, eps=1e-9))
+            )
+            self.errors["kld"].setdefault("R", []).append(
+                float(kld_err(R_true, R_est, smoothing=True, N=self.traj_length, eps=1e-9))
+            )
+            self.errors["kld"].setdefault("P", []).append(
+                float(np.abs(self.errors["kld"]["Q"][-1]-self.errors["kld"]["R"][-1]))
+            )
 
             self.errors["frob"].setdefault("P", []).append(
                 float(normfrob_err(P_true, P_est))
@@ -233,14 +254,25 @@ class Trainer:
         result_dict = {
             "experiment": self.experiment_name,
             "config": base_cfg,
+            # "results": self.errors,
+            # "matrices": matrices,
+        }
+        predict_dict = {
             "results": self.errors,
             "matrices": matrices,
         }
 
         if self.factors[0] is not None:
-            result_dict["factors"] = [[[f.numpy().tolist() for f in trial_factors] for trial_factors in self.factors]][0]
-            result_dict["weights"] = [w.numpy().tolist() for w in self.weights]
+            # result_dict["factors"] = [[[f.numpy().tolist() for f in trial_factors] for trial_factors in self.factors]][0]
+            # result_dict["weights"] = [w.numpy().tolist() for w in self.weights]
+            predict_dict["factors"] = [[[f.numpy().tolist() for f in trial_factors] for trial_factors in self.factors]][0]
+            predict_dict["weights"] = [w.numpy().tolist() for w in self.weights]
 
         path = os.path.join(self.cfg.general.save_path, f"{self.experiment_name}.json")
         with open(path, "w") as f:
             json.dump(result_dict, f, indent=4)
+
+        predict_path = os.path.join(self.cfg.general.save_path, f"{self.experiment_name}.npy")
+        np.save(
+            predict_path, predict_dict
+        )

@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from time import perf_counter
 from scipy.sparse.linalg import svds
+from scipy.linalg import svd
 from src.chains.models import MarkovChainMatrix
 from src.utils import (
     kld_err,
@@ -34,6 +35,7 @@ class SGSADMM:
         assert valid_transition_mat(P_emp), "Invalid transition probability matrix. Expecting a right-stochastic square matrix with entries in [0,1]."
         I = P_emp.shape[0]
         pmin_tensor = torch.tensor(self.pmin, device=P_emp.device, dtype=P_emp.dtype)
+        P_emp = torch.clamp(P_emp, min=1e-7)
 
         def update_y(P, W, S):
             return (torch.eye(I, device=P.device) - P - self.beta * (W + S)).sum(1) / (
@@ -42,6 +44,7 @@ class SGSADMM:
 
         def update_W(P, S, y):
             R = torch.outer(y, torch.ones(I, device=P.device)) + S + P / self.beta
+            # Z = 0.5 * (R + torch.sqrt(R**2 + 4 * torch.clamp(P_emp,min=1e-8) / self.beta)) * (
             Z = 0.5 * (R + torch.sqrt(R**2 + 4 * P_emp / self.beta)) * (
                 P_emp != 0
             ) + torch.maximum(R, torch.zeros_like(R)) * (P_emp == 0)
@@ -49,16 +52,24 @@ class SGSADMM:
 
         def update_S(P, W, y):
             R = -(W + torch.outer(y, torch.ones(I, device=P.device)) + P / self.beta)
+
+            if torch.isnan(R).any() or torch.isinf(R).any():
+                raise ValueError(f"R has NaNs or Infs. Sparsity of P_emp: {1 - (torch.isclose(P_emp,torch.zeros_like(P_emp)).sum() / P_emp.numel()):.3f}")
+
             try:
                 if self.K is None:
                     U, sig, V = torch.svd(R)
                 else:
                     U, sig, V = torch.svd_lowrank(R, self.K)
-            except:
-                U, sig, V = np.linalg.svd(R.cpu().numpy())
-                U = torch.FloatTensor(U).to(P.device)
-                sig = torch.FloatTensor(sig).to(P.device)
-                V = torch.FloatTensor(V).to(P.device)
+            except Exception as e:
+                try:
+                    U_np, sig_np, Vh_np = svd(R.cpu().numpy(), full_matrices=False)
+                    U = torch.tensor(U_np, device=R.device, dtype=R.dtype)
+                    sig = torch.tensor(sig_np, device=R.device, dtype=R.dtype)
+                    V = torch.tensor(Vh_np.T, device=R.device, dtype=R.dtype)
+                except Exception as e2:
+                    print(f"SVD still failed. R norm: {torch.norm(R).item():.4f}")
+                    raise e2
             sig_upd = torch.minimum(
                 sig, torch.tensor(self.gamma, device=sig.device, dtype=sig.dtype)
             )
@@ -104,7 +115,7 @@ class SGSADMM:
                 .max()
                 .item()
             )
-            cost = kld_err(P_emp, P)
+            cost = kld_err(P_emp, P, smoothing=True)
 
             diffs.append(diff)
             costs.append(cost)
@@ -120,7 +131,10 @@ class SGSADMM:
                 print(f"Terminating early @ {itr+1} iters. Diff = {diff:.2e}")
                 break
 
-        P = P / P.sum(1, keepdim=True)
+        Marginal = P.sum(1, keepdim=True)
+        Mask = (Marginal==0).expand_as(P)
+        P = P / Marginal
+        P[Mask] = 1 / len(Marginal)
         return dict(mc_est=MarkovChainMatrix(P), diffs=diffs, costs=costs)
 
 
@@ -254,7 +268,7 @@ class IPDC:
                 .max()
                 .item()
             )
-            cost = kld_err(P_emp, P)
+            cost = kld_err(P_emp, P, smoothing=True)
 
             diffs.append(diff)
             costs.append(cost)
@@ -270,7 +284,10 @@ class IPDC:
                 print(f"Terminating early @ {itr+1}. Diff = {diff:.2e}")
                 break
 
-        P = P / P.sum(1, keepdim=True)
+        Marginal = P.sum(1, keepdim=True)
+        Mask = (Marginal==0).expand_as(P)
+        P = P / Marginal
+        P[Mask] = 1 / len(Marginal)
         return dict(mc_est=MarkovChainMatrix(P), diffs=diffs, costs=costs)
 
 
@@ -304,4 +321,4 @@ class SLRM:
         P[Mask] = torch.tensor(1.0 / I, device=P.device, dtype=P.dtype)
 
         P = P / P.sum(1, keepdim=True)
-        return dict(mc_est=MarkovChainMatrix(P), cost=kld_err(qmat_to_pmat(Q_emp), P))
+        return dict(mc_est=MarkovChainMatrix(P), cost=kld_err(qmat_to_pmat(Q_emp), P, smoothing=True))

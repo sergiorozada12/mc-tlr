@@ -58,15 +58,35 @@ class TensorGenerator:
         P = P / P.sum(dim=1, keepdim=True)
         P = mat_to_ten(P, Is)
 
-        return MarkovChainTensor(P)
+        return MarkovChainTensor(P), U, w
 
-    def block(self, I_per_block: int, D: int, K: int) -> MarkovChainTensor:
-        state_core = torch.rand((K,) * (2 * D))
-        Q = torch.kron(state_core, torch.ones((I_per_block // K,) * (2 * D)))
-        Is = torch.tensor([I_per_block] * D)
-        Q = Q / Q.sum(dim=tuple(range(D, 2 * D)), keepdim=True)
+    # def block(self, num_blocks: int, I_per_block: int, K_per_block: int, D: int) -> MarkovChainTensor:
+    def block(self, Is: torch.tensor, K: int) -> MarkovChainTensor:
+        assert K>Is[0], "Invalid dimensions. Tensor rank must be larger than number of blocks."
+        D = len(Is)
+        I = Is.prod().item()
 
-        return MarkovChainTensor(Q)
+        num_blocks = Is[0].item()
+        block_labs = np.random.choice(num_blocks,K)
+        while set(np.unique(block_labs)) != set(np.arange(num_blocks)):
+            block_labs = np.random.choice(num_blocks,K)
+        block_labs = np.sort(block_labs)
+        block_inds = [np.where(block_labs!=k)[0] for k in range(num_blocks)]
+        # K_per_block = int(K/num_blocks)
+        # block_inds = np.concatenate(([np.arange(num_blocks)*K_per_block,[K]]))
+
+        U = [(torch.randn(Is[d%D],K))**2 for d in range(2*D)]
+        for k in range(num_blocks):
+            U[0][k,block_inds[k]] *= 1e-4
+            U[D][k,block_inds[k]] *= 1e-4
+        U = [u/torch.linalg.norm(u,dim=0,keepdim=True) for u in U]
+        w = torch.rand(K); w = w/w.sum()
+
+        Pten = cp_to_tensor((w,U))
+        P = ten_to_mat(Pten,I)
+        marg = P.sum(dim=1)
+        P[marg!=0] = P[marg!=0]/marg[marg!=0][:,None]
+        return MarkovChainTensor(mat_to_ten(P,Is)), U, w
 
     def random_cp(self, Is: torch.Tensor, K: int):
         D = len(Is)
