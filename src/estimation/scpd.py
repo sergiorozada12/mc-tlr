@@ -231,8 +231,19 @@ class SCPD:
 
         Q_est = cp_to_tensor((l, Qds))
         P_est = qten_to_pten(Q_est)
+
+        # TODO: Update so MC objects can optionally be assigned P, Q, and R, without needing an eigendecomposition of P
+        # TODO: Add get and set functions to MC objects
+        mct = MarkovChainTensor(P_est)
+        mct.Q = Q_est
+        mct._mcm.Q = ten_to_mat(mct.Q,I)
+        mct.R = .5 * (mct.Q.sum(tuple(range(D))) + mct.Q.sum(tuple(range(D,2*D))))
+        mct._mcm.R = .5 * (mct._mcm.Q.sum(0) + mct._mcm.Q.sum(1))
+        # mct.P = mct.Q / mct.R.expand_as(mct.Q)
+        # mct._mcm.P = mct._mcm.Q / mct._mcm.R.view(-1,1)
+        # mct.P = mat_to_ten(mct._mcm.P,Is)
         return dict(
-            mc_est=MarkovChainTensor(P_est), diffs=diffs, costs=costs, Qds=Qds, l=l
+            mc_est=mct, diffs=diffs, costs=costs, Qds=Qds, l=l
         )
 
     def _init_tensor(self, shape):
