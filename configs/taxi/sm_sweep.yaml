@@ -1,0 +1,20 @@
+description: Sweep test using sm estimation
+
+# program and project only used when running sweep from CLI
+program: sweep.py
+project: markov-chain-estimation
+
+method: grid
+metric:
+  name: qloss
+  goal: minimize
+
+parameters:
+  method:
+    parameters:
+      method_name:
+        value: "sm"
+      sm:
+        parameters:
+          K:
+            values: [ 1, 2, 3 ]

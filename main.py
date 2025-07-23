@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 from src.datasets.sim import SimDataset
+from src.datasets.taxi import TaxiDataset
 from src.train import Trainer
 
 
@@ -14,13 +15,14 @@ def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wandb_project", type=str, default="markov-chain-estimation")
     parser.add_argument("--wandb_experiment_name", type=str, default="default_experiment")
+    parser.add_argument("--config_dataset", type=str, required=True)
     parser.add_argument("--config_base_path", type=str, required=True)
     parser.add_argument("--config_sweep_path", type=str, required=True)
     parser.add_argument("--sweep_name", type=str, default="")
     return parser.parse_args()
 
 
-def run_training(project, experiment_name, config_base_path, sweep_name):
+def run_training(project, experiment_name, config_dataset, config_base_path):
     wandb.init(project=project)
 
     # GET CONFIG
@@ -45,7 +47,12 @@ def run_training(project, experiment_name, config_base_path, sweep_name):
     torch.set_num_threads(1)
 
     # GET DATA
-    dataset = SimDataset(cfg.dataset)
+    if config_dataset == "sim":
+        dataset = SimDataset(cfg.dataset)
+    elif config_dataset == "taxi":
+        dataset = TaxiDataset(cfg.dataset)
+    else:
+        raise "Dataset not supported."
 
     # RUN EXPERIMENT
     trainer = Trainer(
@@ -64,6 +71,7 @@ def main():
     args = get_arguments()
     project = args.wandb_project
     experiment_name = args.wandb_experiment_name
+    config_dataset = args.config_dataset
     config_base_path = args.config_base_path
     config_sweep_path = args.config_sweep_path
     sweep_name = args.sweep_name
@@ -74,7 +82,7 @@ def main():
     sweep_dict["project"] = project
 
     sweep_id = wandb.sweep(sweep_dict, project=project)
-    wandb.agent(sweep_id, function=lambda: run_training(project, experiment_name, config_base_path, sweep_name))
+    wandb.agent(sweep_id, function=lambda: run_training(project, experiment_name, config_dataset, config_base_path))
 
 
 if __name__ == "__main__":

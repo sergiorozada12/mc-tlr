@@ -1,0 +1,22 @@
+description: Sweep test using nn estimation
+
+# program and project only used when running sweep from CLI
+program: sweep.py
+project: markov-chain-estimation
+
+method: grid
+metric:
+  name: qloss
+  goal: minimize
+
+parameters:
+  method:
+    parameters:
+      method_name:
+        value: "nn"
+      nn:
+        parameters:
+          num_itrs:
+            value: 1000
+          gamma:
+            values: [ 0.01, 0.1, 1.0, 10.0 ]
