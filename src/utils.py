@@ -69,9 +69,13 @@ def mat2lowtri(A, N=None):
     return A[low_tri_indices[1], low_tri_indices[0]]
 
 
-def kld_err(P, Q):
-    p = P.flatten()
-    q = Q.flatten()
+def kld_err(P, Q, smoothing:bool=False, N:float=1e9, eps:float=1e-9):
+    p = P.flatten(); q = Q.flatten()
+    if smoothing:
+        invalid_inds = (p!=0)*(q==0)
+        q[invalid_inds] = laplace_smoothing(q[invalid_inds],N,eps)
+    p = p.numpy().astype(float); q = q.numpy().astype(float)
+    p = p/p.sum(); q = q/q.sum()
     return kl_div(p, q).sum()
 
 

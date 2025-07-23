@@ -6,7 +6,7 @@ project: markov-chain-estimation
 
 method: grid
 metric:
-  name: qloss
+  name: qkld
   goal: minimize
 
 parameters:
@@ -17,12 +17,12 @@ parameters:
       dc:
         parameters:
           num_itrs:
-            value: 1000
+            value: 5000
           K:
-            values: [ 1, 2, 3 ]
+            values: [ 3, 6 ]
           alpha:
-            values: [ 0.1, 1.0 ]
+            value: 0.1
           gamma:
-            values: [ 0.1, 1.0, 10.0 ]
+            value: 0.1
           num_inn_itrs:
-            values: [ 1, 10, 50 ]
+            value: 10

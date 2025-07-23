@@ -53,7 +53,7 @@ class SimDataset:
             P_true_mat = mc.P
             P_emp_mats, _ = zip(*estimates)
         else:
-            mc = gen_method(dims, self.cfg.rank)
+            mc = gen_method(dims, self.cfg.rank)[0]
             trajectories = mc.simulate(
                 num_steps=self.cfg.length,
                 num_trajectories=self.cfg.trials,
@@ -87,21 +87,26 @@ class SimDataset:
             for mc in mc_emp
         ]
 
+        self._trajectories_true_mat = torch.tensor(trajectories_true, dtype=torch.long).clone()
+        self._trajectories_emp_mat = torch.tensor(trajectories_emp, dtype=torch.long).clone()
+
         if use_tensor:
-            trajectories_true = [chain_mat_to_ten(traj, dims) for traj in trajectories_true]
-            trajectories_emp = [chain_mat_to_ten(traj, dims) for traj in trajectories_emp]
+            trajectories_true = torch.stack([torch.stack(chain_mat_to_ten(traj, dims)) for traj in trajectories_true])
+            trajectories_emp = torch.stack([torch.stack(chain_mat_to_ten(traj, dims)) for traj in trajectories_emp])
+            # trajectories_true = [chain_mat_to_ten(traj, dims) for traj in trajectories_true]
+            # trajectories_emp = [chain_mat_to_ten(traj, dims) for traj in trajectories_emp]
             P_true_tensor = mat_to_ten(P_true_mat, dims)
             P_emp_tensors = [mat_to_ten(P, dims) for P in P_emp_mats]
             mc_true = [MarkovChainTensor(P_true_tensor) for _ in range(self.cfg.trials)]
             mc_emp = [MarkovChainTensor(P) for P in P_emp_tensors]
-            trajectories_true = torch.stack([
-                torch.stack([torch.tensor(x, dtype=torch.long) for x in traj])
-                for traj in trajectories_true
-            ])
-            trajectories_emp = torch.stack([
-                torch.stack([torch.tensor(x, dtype=torch.long) for x in traj])
-                for traj in trajectories_emp
-            ])
+            # trajectories_true = torch.stack([
+            #     torch.stack([torch.tensor(x, dtype=torch.long) for x in traj])
+            #     for traj in trajectories_true
+            # ])
+            # trajectories_emp = torch.stack([
+            #     torch.stack([torch.tensor(x, dtype=torch.long) for x in traj])
+            #     for traj in trajectories_emp
+            # ])
         else:
             trajectories_true = torch.tensor(trajectories_true, dtype=torch.long)
             trajectories_emp = torch.tensor(trajectories_emp, dtype=torch.long)
@@ -116,6 +121,7 @@ class SimDataset:
 
     def save_data(self):
         assert self._P_true_mat is not None and self._P_emp_list_mat is not None
+        assert self._trajectories_true_mat is not None and self._trajectories_emp_mat is not None
 
         data_path = self._get_full_path()
         os.makedirs(os.path.dirname(data_path), exist_ok=True)
@@ -124,8 +130,10 @@ class SimDataset:
             {
                 "P_true": self._P_true_mat.numpy(),
                 "P_emp": [P.numpy() for P in self._P_emp_list_mat],
-                "trajectories_true": self.trajectories_true.numpy(),
-                "trajectories_emp": self.trajectories_emp.numpy(),
+                # "trajectories_true": self.trajectories_true.numpy(),
+                # "trajectories_emp": self.trajectories_emp.numpy(),
+                "trajectories_true": self._trajectories_true_mat.numpy(),
+                "trajectories_emp": self._trajectories_emp_mat.numpy(),
                 "dims": self.cfg.dims,
             },
         )
@@ -151,8 +159,8 @@ class SimDataset:
         mc_emp = [MarkovChainMatrix(P) for P in P_emp_list]
 
         if use_tensor:
-            trajectories_true = torch.tensor(trajectories_true, dtype=torch.long)
-            trajectories_emp = torch.tensor(trajectories_emp, dtype=torch.long)
+            trajectories_true = torch.stack([torch.stack(chain_mat_to_ten(traj, dims)) for traj in trajectories_true])
+            trajectories_emp = torch.stack([torch.stack(chain_mat_to_ten(traj, dims)) for traj in trajectories_emp])
             P_true_tensor = mat_to_ten(P_true, dims)
             P_emp_tensors = [mat_to_ten(P, dims) for P in P_emp_list]
             mc_true = [MarkovChainTensor(P_true_tensor) for _ in range(self.cfg.trials)]

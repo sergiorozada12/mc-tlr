@@ -18,6 +18,7 @@ def get_arguments():
     parser.add_argument("--config_dataset", type=str, required=True)
     parser.add_argument("--config_base_path", type=str, required=True)
     parser.add_argument("--config_sweep_path", type=str, required=True)
+    parser.add_argument("--sweep_name", type=str, default="")
     return parser.parse_args()
 
 
@@ -34,6 +35,9 @@ def run_training(project, experiment_name, config_dataset, config_base_path):
     param_cfg = sweep_cfg.method[method_name]
     param_str = "-".join(f"{k}{v}" for k, v in param_cfg.items())
     run_name = f"{method_name}_{param_str}"
+    if len(sweep_name)>0:
+        run_name = sweep_name + "_" + run_name
+    save_name = f"{experiment_name}_{param_str}"
 
     wandb.run.name = run_name
     wandb.run.save()
@@ -53,10 +57,10 @@ def run_training(project, experiment_name, config_dataset, config_base_path):
     # RUN EXPERIMENT
     trainer = Trainer(
         project=project,
-        experiment_name=experiment_name,
+        experiment_name=save_name,
         cfg=cfg,
         log_results=True,
-        save_results=False,
+        save_results=True,
     )
     trainer.fit(dataset)
 
@@ -70,6 +74,7 @@ def main():
     config_dataset = args.config_dataset
     config_base_path = args.config_base_path
     config_sweep_path = args.config_sweep_path
+    sweep_name = args.sweep_name
 
     sweep_yaml = OmegaConf.load(config_sweep_path)
     sweep_dict = OmegaConf.to_container(sweep_yaml, resolve=True)
