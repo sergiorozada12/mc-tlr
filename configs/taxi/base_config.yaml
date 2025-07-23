@@ -1,0 +1,15 @@
+general:
+  seed: 1000
+  save_path: "results/"
+
+dataset:
+  trips_path: "data/yellow_tripdata_2024-01.parquet"
+  zones_path: "data/taxi_zones.csv"
+  data_dir: "data"
+  generation_type: "tensor"
+  burn_in: 500
+  length: 300
+  trials: 5
+
+method:
+  method_name: "dc"

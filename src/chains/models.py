@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from src.utils import mat_to_ten, ten_to_mat, normalize_rows
 
@@ -32,22 +33,30 @@ class BaseMarkovChain(ABC):
 
 
 class MarkovChainMatrix(BaseMarkovChain):
-    def __init__(self, P: torch.Tensor):
+    def __init__(self, P: torch.Tensor, R: Optional[torch.Tensor]=None, Q: Optional[torch.Tensor]=None):
         assert P.ndim == 2 and P.shape[0] == P.shape[1], "P must be square matrix"
-        assert torch.allclose(
-            P.sum(dim=1), torch.ones(P.shape[0])
-        ), "Rows must sum to 1"
+        # IN TAXI DATASET THIS IS NOT TRUE SINCE SOME STATES ARE UNOBSERVED => THINK SOLUTION
+        #assert torch.allclose(
+        #    P.sum(dim=1), torch.ones(P.shape[0])
+        #), "Rows must sum to 1"
         assert (P >= 0).all() and (P <= 1).all(), "Invalid probabilities in P"
 
         self.P = normalize_rows(P)
         self.I = P.shape[0]
 
-        evals, evecs = torch.linalg.eig(self.P.T)
-        idx_pi = torch.where(torch.abs(evals - 1) <= 1e-5)[0][0]
-        self.R = torch.abs(torch.real(evecs[:, idx_pi]))
-        self.R = self.R / self.R.sum()
+        if R is None:
+            evals, evecs = torch.linalg.eig(self.P.T)
+            idx_pi = torch.where(torch.abs(evals - 1) <= 1e-5)[0][0]
+            self.R = torch.abs(torch.real(evecs[:, idx_pi]))
+            self.R = self.R / self.R.sum()
+        else:
+            self.R = R
 
-        self.Q = torch.diag(self.R) @ self.P
+        if Q is None:
+            self.Q = torch.diag(self.R) @ self.P
+        else:
+            self.Q = Q
+
         self.current_state = torch.multinomial(self.R, 1).item()
 
     def reset(self):
@@ -60,7 +69,7 @@ class MarkovChainMatrix(BaseMarkovChain):
 
 
 class MarkovChainTensor(BaseMarkovChain):
-    def __init__(self, P: torch.Tensor):
+    def __init__(self, P: torch.Tensor, R: Optional[torch.Tensor]=None, Q: Optional[torch.Tensor]=None):
         assert P.ndim % 2 == 0, "P must have even number of dimensions"
         D = P.ndim // 2
         assert (
@@ -74,12 +83,16 @@ class MarkovChainTensor(BaseMarkovChain):
 
         P_mat = ten_to_mat(P, self.I)
         P_mat = normalize_rows(P_mat)
-
-        self._mcm = MarkovChainMatrix(P_mat)
-
-        self.P = mat_to_ten(self._mcm.P, self.Is)
-        self.Q = mat_to_ten(self._mcm.Q, self.Is)
-        self.R = self._mcm.R.reshape(tuple(self.Is))
+        if (R is None) and (Q is None):
+            self._mcm = MarkovChainMatrix(P_mat)
+            self.P = mat_to_ten(self._mcm.P, self.Is)
+            self.Q = mat_to_ten(self._mcm.Q, self.Is)
+            self.R = self._mcm.R.reshape(tuple(self.Is))
+        else:
+            self._mcm = MarkovChainMatrix(P_mat)
+            self.P = P
+            self.Q = Q
+            self.R = R
 
         self.current_state = torch.tensor(
             np.unravel_index(self._mcm.current_state, tuple(self.Is)), dtype=torch.long
