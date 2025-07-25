@@ -6,10 +6,9 @@ dataset:
   trips_path: "data/yellow_tripdata_2024-01.parquet"
   zones_path: "data/taxi_zones.csv"
   data_dir: "data"
-  generation_type: "tensor"
-  burn_in: 500
-  length: 300
   trials: 5
+  n_samples: 100
+  n_samples_all: [100, 500, 1000]
 
 method:
   method_name: "dc"
